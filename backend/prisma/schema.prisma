@@ -1,0 +1,252 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER_EXTERNAL
+  STAFF_OPERATOR
+  STAFF_CLINICAL
+  ADMIN_SYSTEM
+}
+
+enum FamilyStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum MemberType {
+  ACTIVE
+  PASSIVE
+}
+
+enum TicketType {
+  ADMIN
+  CLINICAL
+  PRESCRIPTION_REQUEST
+  LAB_ORDER_REQUEST
+  PROCEDURE
+  OTHER
+}
+
+enum TicketStatus {
+  RECEIVED
+  IN_REVIEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum DocCategory {
+  EXAM
+  PRESCRIPTION
+  INSTRUCTIONS
+  CERTIFICATE
+  OTHER
+}
+
+enum ActorType {
+  USER
+  STAFF
+  SYSTEM
+}
+
+model User {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  passwordHash    String
+  fullName        String
+  role            Role        @default(USER_EXTERNAL)
+  emailVerified   Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  sessions        Session[]
+  heldFamilies    Family[]    @relation("HolderFamilies")
+  familyLinks     FamilyUser[]
+  assignedChats   Conversation[] @relation("AssignedStaff")
+  assignedTickets Ticket[]    @relation("TicketAssigned")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ip           String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Family {
+  id          String       @id @default(cuid())
+  holderUserId String
+  planId      String?
+  status      FamilyStatus @default(ACTIVE)
+  maxMembers  Int          @default(5)
+  createdAt   DateTime     @default(now())
+  holder      User         @relation("HolderFamilies", fields: [holderUserId], references: [id])
+  members     FamilyMember[]
+  users       FamilyUser[]
+  invites     FamilyInvite[]
+  subscription Subscription?
+  conversations Conversation[]
+  tickets     Ticket[]
+  documents   Document[]
+}
+
+model FamilyUser {
+  id          String @id @default(cuid())
+  familyId    String
+  userId      String
+  canChat     Boolean @default(true)
+  canCreateTicket Boolean @default(true)
+  canViewDocs Boolean @default(true)
+  family      Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, userId])
+}
+
+model FamilyMember {
+  id               String   @id @default(cuid())
+  familyId          String
+  userId            String?
+  displayName       String
+  type              MemberType @default(ACTIVE)
+  age               Int?
+  birthYear         Int?
+  sex               String?
+  keyNotes          String?
+  emergencyContact  String?
+  family            Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+model FamilyInvite {
+  id         String   @id @default(cuid())
+  familyId   String
+  token      String   @unique
+  invitedEmail String?
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdById String
+  family     Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  benefits    PlanBenefit[]
+  subscriptions Subscription[]
+}
+
+model PlanBenefit {
+  id      String @id @default(cuid())
+  planId  String
+  title   String
+  detail  String
+  plan    Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  familyId    String   @unique
+  planId      String
+  renewalDate DateTime
+  status      FamilyStatus @default(ACTIVE)
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  plan        Plan     @relation(fields: [planId], references: [id])
+  payments    Payment[]
+}
+
+model Payment {
+  id             String @id @default(cuid())
+  subscriptionId String
+  amount         Float
+  paidAt         DateTime @default(now())
+  reference      String?
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id             String @id @default(cuid())
+  familyId       String
+  memberId       String?
+  subject        String?
+  assignedStaffId String?
+  tag            String?
+  createdAt      DateTime @default(now())
+  family         Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  messages       Message[]
+  assignedStaff  User? @relation("AssignedStaff", fields: [assignedStaffId], references: [id])
+}
+
+model Message {
+  id             String @id @default(cuid())
+  conversationId String
+  senderUserId   String
+  text           String?
+  attachmentPath String?
+  attachmentMime String?
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Ticket {
+  id              String @id @default(cuid())
+  familyId        String
+  memberId        String?
+  createdByUserId String
+  type            TicketType
+  status          TicketStatus @default(RECEIVED)
+  title           String
+  description     String
+  assignedToId    String?
+  resolutionNote  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  events          TicketEvent[]
+  assignedTo      User? @relation("TicketAssigned", fields: [assignedToId], references: [id])
+}
+
+model TicketEvent {
+  id        String @id @default(cuid())
+  ticketId  String
+  actorId   String
+  eventType String
+  note      String?
+  createdAt DateTime @default(now())
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id            String @id @default(cuid())
+  familyId      String
+  memberId      String?
+  category      DocCategory
+  title         String
+  filePath      String
+  mimeType      String?
+  uploadedById  String
+  createdAt     DateTime @default(now())
+  family        Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorType    ActorType
+  actorId      String?
+  action       String
+  resourceType String
+  resourceId   String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+}
