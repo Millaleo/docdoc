@@ -29,9 +29,10 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Too many auth attempts, please try again later.' },
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'docdoc-backend' }));
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
 app.use('/auth', authLimiter, authRoutes);
@@ -43,10 +44,10 @@ app.use('/', documentRoutes);
 app.use('/admin', adminRoutes);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(JSON.stringify({ level: 'error', message: err.message }));
+  console.error(JSON.stringify({ level: 'error', message: err.message, stack: err.stack }));
   res.status(500).json({ error: 'Internal server error' });
 });
 
 app.listen(env.port, () => {
-  console.log(JSON.stringify({ level: 'info', message: `API running on ${env.port}` }));
+  console.log(JSON.stringify({ level: 'info', message: `API running on port ${env.port}` }));
 });

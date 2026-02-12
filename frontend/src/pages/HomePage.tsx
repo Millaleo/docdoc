@@ -2,10 +2,23 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 
 export const HomePage = () => {
-  const [status, setStatus] = useState('');
+  const [summary, setSummary] = useState('');
+
   useEffect(() => {
-    const familyId = localStorage.getItem('familyId');
-    if (familyId) api(`/subscription/${familyId}`).then((s) => setStatus(`${s?.status ?? 'N/A'} - ${s?.plan?.name ?? ''}`)).catch(() => setStatus('Sin suscripción'));
+    api('/family')
+      .then((families) => {
+        const first = families?.[0];
+        if (!first) return setSummary('No family found, create one from API first.');
+        localStorage.setItem('familyId', first.id);
+        setSummary(`Family ${first.id} | Status: ${first.status}`);
+      })
+      .catch(() => setSummary('Unable to load family summary.'));
   }, []);
-  return <div><h3>/home</h3><p>Plan: {status}</p></div>;
+
+  return (
+    <div>
+      <h3>/home</h3>
+      <p>{summary}</p>
+    </div>
+  );
 };
